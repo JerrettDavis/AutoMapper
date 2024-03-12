@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using AutoMapper.Features;
 using AutoMapper.Internal.Mappers;
 using AutoMapper.QueryableExtensions.Impl;
@@ -132,6 +133,7 @@ public sealed class MapperConfigurationExpression : Profile, IGlobalConfiguratio
     public void AddProfile<TProfile>() where TProfile : Profile, new() => AddProfile(new TProfile());
 
     public void AddProfile(Type profileType) => AddProfile((Profile)Activator.CreateInstance(profileType));
+    public void AddGenericProfile(Type profileType) => AddProfile((Profile)GetInstanceOfGeneric(profileType));
 
     public void AddProfiles(IEnumerable<Profile> enumerableOfProfiles)
     {
@@ -164,9 +166,16 @@ public sealed class MapperConfigurationExpression : Profile, IGlobalConfiguratio
         var autoMapAttributeProfile = new Profile(nameof(AutoMapAttribute));
         foreach (var type in assembliesToScan.Where(a => !a.IsDynamic && a != typeof(Profile).Assembly).SelectMany(a => a.GetTypes()))
         {
-            if (typeof(Profile).IsAssignableFrom(type) && !type.IsAbstract && !type.ContainsGenericParameters)
+            if (typeof(Profile).IsAssignableFrom(type) && !type.IsAbstract)
             {
-                AddProfile(type);
+                if (type.ContainsGenericParameters)
+                {
+                    AddGenericProfile(type);
+                }
+                else
+                {
+                    AddProfile(type);    
+                }
             }
 
             foreach (var autoMapAttribute in type.GetCustomAttributes<AutoMapAttribute>())
@@ -189,4 +198,18 @@ public sealed class MapperConfigurationExpression : Profile, IGlobalConfiguratio
     }
 
     public void ConstructServicesUsing(Func<Type, object> constructor) => _serviceCtor = constructor ?? throw new ArgumentNullException(nameof(constructor));
+    
+    private static object GetInstanceOfGeneric(Type genericType)
+    {
+        var typeArgs = GetGenericArguments(genericType);
+        var constructedType = genericType.MakeGenericType(typeArgs);
+
+        return Activator.CreateInstance(constructedType);
+    }
+
+    private static Type[] GetGenericArguments(
+        Type genericType) =>
+        genericType.GetGenericArguments()
+            .Select(_ => typeof(object))
+            .ToArray();
 }
